@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"index/suffixarray"
 	"io/ioutil"
@@ -11,28 +12,35 @@ import (
 	"os"
 )
 
+var fileName = flag.String("f", "completeworks.txt", "the name of file to read")
+
 func main() {
+	flag.Parse()
+
 	searcher := Searcher{}
-	err := searcher.Load("completeworks.txt")
+	err := searcher.Load(*fileName)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	fs := http.FileServer(http.Dir("./static"))
-	http.Handle("/", fs)
+	mux := http.NewServeMux()
+	mux.Handle("/", fs)
 
-	http.HandleFunc("/search", handleSearch(searcher))
+	mux.HandleFunc("/search", handleSearch(searcher))
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3001"
 	}
 
-	fmt.Printf("Listening on port %s...", port)
-	err = http.ListenAndServe(fmt.Sprintf(":%s", port), nil)
-	if err != nil {
-		log.Fatal(err)
+	server := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
 	}
+
+	log.Printf("Listening on port %s", server.Addr)
+	log.Fatal(server.ListenAndServe())
 }
 
 type Searcher struct {
