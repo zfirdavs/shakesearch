@@ -10,6 +10,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"unicode"
+	"unicode/utf8"
 )
 
 var fileName = flag.String("f", "completeworks.txt", "the name of file to read")
@@ -44,7 +46,7 @@ func main() {
 }
 
 type Searcher struct {
-	CompleteWorks string
+	CompleteWorks []byte
 	SuffixArray   *suffixarray.Index
 }
 
@@ -58,12 +60,11 @@ func handleSearch(searcher Searcher) func(w http.ResponseWriter, r *http.Request
 
 		results := searcher.Search(query[0])
 		buf := &bytes.Buffer{}
-		enc := json.NewEncoder(buf)
-		err := enc.Encode(results)
-		if err != nil {
+		if err := json.NewEncoder(buf).Encode(results); err != nil {
 			http.Error(w, "encoding failure", http.StatusInternalServerError)
 			return
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(buf.Bytes())
 	}
@@ -72,18 +73,41 @@ func handleSearch(searcher Searcher) func(w http.ResponseWriter, r *http.Request
 func (s *Searcher) Load(filename string) error {
 	dat, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return fmt.Errorf("Load: %w", err)
+		return fmt.Errorf("error read file: %w", err)
 	}
-	s.CompleteWorks = string(dat)
+	s.CompleteWorks = dat
 	s.SuffixArray = suffixarray.New(dat)
 	return nil
 }
 
 func (s *Searcher) Search(query string) []string {
-	idxs := s.SuffixArray.Lookup([]byte(query), -1)
+	indexes := s.SuffixArray.Lookup([]byte(query), -1)
 	results := []string{}
-	for _, idx := range idxs {
-		results = append(results, s.CompleteWorks[idx-250:idx+250])
+	for _, idx := range indexes {
+		results = append(results, s.getWordsFromIndex(idx))
 	}
 	return results
+}
+
+func (s *Searcher) getWordsFromIndex(index int) string {
+	var wordStart, wordEnd int
+	for i := index - 1; i >= 0; {
+		r, size := utf8.DecodeRune(s.CompleteWorks[i:])
+		if unicode.IsSpace(r) || !unicode.IsLetter(r) || unicode.IsPunct(r) {
+			wordStart = i
+			break
+		}
+		i -= size
+	}
+
+	for i := index + 1; i < len(s.CompleteWorks); {
+		r, size := utf8.DecodeRune(s.CompleteWorks[i:])
+		if unicode.IsSpace(r) || !unicode.IsLetter(r) || unicode.IsPunct(r) {
+			wordEnd = i
+			break
+		}
+		i += size
+	}
+
+	return string(s.CompleteWorks[wordStart:wordEnd])
 }
