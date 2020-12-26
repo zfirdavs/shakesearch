@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -70,8 +71,8 @@ func handleSearch(searcher Searcher) func(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func (s *Searcher) Load(filename string) error {
-	dat, err := ioutil.ReadFile(filename)
+func (s *Searcher) Load(fileName string) error {
+	dat, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return fmt.Errorf("error read file: %w", err)
 	}
@@ -84,7 +85,8 @@ func (s *Searcher) Search(query string) []string {
 	indexes := s.SuffixArray.Lookup([]byte(query), -1)
 	results := []string{}
 	for _, idx := range indexes {
-		results = append(results, s.getWordsFromIndex(idx))
+		word := s.getWordsFromIndex(idx)
+		results = append(results, s.TrimFunc(word))
 	}
 	return results
 }
@@ -93,7 +95,7 @@ func (s *Searcher) getWordsFromIndex(index int) string {
 	var wordStart, wordEnd int
 	for i := index - 1; i >= 0; {
 		r, size := utf8.DecodeRune(s.CompleteWorks[i:])
-		if unicode.IsSpace(r) || !unicode.IsLetter(r) || unicode.IsPunct(r) {
+		if unicode.IsSpace(r) || unicode.IsPunct(r) {
 			wordStart = i
 			break
 		}
@@ -102,7 +104,7 @@ func (s *Searcher) getWordsFromIndex(index int) string {
 
 	for i := index + 1; i < len(s.CompleteWorks); {
 		r, size := utf8.DecodeRune(s.CompleteWorks[i:])
-		if unicode.IsSpace(r) || !unicode.IsLetter(r) || unicode.IsPunct(r) {
+		if unicode.IsSpace(r) || unicode.IsPunct(r) {
 			wordEnd = i
 			break
 		}
@@ -110,4 +112,10 @@ func (s *Searcher) getWordsFromIndex(index int) string {
 	}
 
 	return string(s.CompleteWorks[wordStart:wordEnd])
+}
+
+func (s *Searcher) TrimFunc(inputStr string) string {
+	return strings.TrimFunc(inputStr, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
 }
