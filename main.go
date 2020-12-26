@@ -53,15 +53,39 @@ type Searcher struct {
 
 func handleSearch(searcher Searcher) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		buf := &bytes.Buffer{}
 		query, ok := r.URL.Query()["q"]
-		if !ok || len(query[0]) < 1 {
+		reqQuery := query[0]
+		if !ok || len(reqQuery) < 1 {
 			http.Error(w, "missing search query in URL params", http.StatusBadRequest)
 			return
 		}
 
-		results := searcher.Search(query[0])
-		buf := &bytes.Buffer{}
-		if err := json.NewEncoder(buf).Encode(results); err != nil {
+		// found the lower case request query
+		lowerQ := strings.ToLower(reqQuery)
+		resultsLower := searcher.Search(lowerQ)
+
+		// found the title case request query
+		titleQ := strings.Title(reqQuery)
+		resultsTitle := searcher.Search(titleQ)
+
+		// found the upper case request query
+		upperQ := strings.ToUpper(reqQuery)
+		resultsUpper := searcher.Search(upperQ)
+
+		totalLen := len(resultsLower) + len(resultsTitle) + len(resultsUpper)
+		totalResults := make([]string, 0, totalLen)
+		if len(resultsLower) != 0 {
+			totalResults = append(totalResults, resultsLower...)
+		}
+		if len(resultsTitle) != 0 {
+			totalResults = append(totalResults, resultsTitle...)
+		}
+		if len(resultsUpper) != 0 {
+			totalResults = append(totalResults, resultsUpper...)
+		}
+
+		if err := json.NewEncoder(buf).Encode(totalResults); err != nil {
 			http.Error(w, "encoding failure", http.StatusInternalServerError)
 			return
 		}
